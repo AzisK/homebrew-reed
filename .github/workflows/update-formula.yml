@@ -1,0 +1,48 @@
+---
+name: Update Formula
+on:
+  repository_dispatch:
+    types: [update-formula]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to update to (leave empty for latest)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-slim
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.client_payload.version }}" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=$(curl -s https://pypi.org/pypi/reedy/json | jq -r '.info.version')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Updating to version $VERSION"
+
+      - name: Update formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA256=$(curl -s "https://pypi.org/pypi/reedy/${VERSION}/json" | jq -r '.urls[] | select(.packagetype == "sdist") | .digests.sha256')
+          sed -i "s|url \"https://files.pythonhosted.org/packages/source/r/reedy/reedy-.*\.tar\.gz\"|url \"https://files.pythonhosted.org/packages/source/r/reedy/reedy-${VERSION}.tar.gz\"|" Formula/reed.rb
+          sed -i "/^  sha256/s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/reed.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/reed.rb
+          git diff --cached --quiet || git commit -m "Update reed to ${{ steps.version.outputs.version }} [automated: update-formula workflow]"
+          git push
