@@ -30,7 +30,9 @@ class Reed < Formula
   end
 
   def install
-    virtualenv_install_with_resources
+    venv = virtualenv_create(libexec, "python3.14")
+    system libexec/"bin/pip", "install", "reedy==#{version}"
+    bin.install_symlink Dir[libexec/"bin/reed"]
   end
 
   test do
